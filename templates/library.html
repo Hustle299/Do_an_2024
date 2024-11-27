@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Library</title>
+</head>
+<body>
+    <h1>Your Image Library</h1>
+    <a href="/logout">Logout</a>
+    <a href="/upload">Upload Image</a>
+    <ul>
+        {% for image in images %}
+            <li>
+                <img src="{{ url_for('static', filename='uploads/' + image.filename) }}" alt="Image" width="200">
+                Uploaded at: {{ image.upload_time }}
+            </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
