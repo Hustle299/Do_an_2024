@@ -1,11 +1,8 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import glob
 import math
-
-# Initialize MediaPipe Hands
-mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.5)
 
 # Load the image
 image_path = 'static/uploads/imagetest.jpg'  # Replace with your image file path
@@ -13,10 +10,14 @@ image = cv2.imread(image_path)
 image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 result_img = image.copy()
 
+# Initialize MediaPipe Hands
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.5)
+
 # Process the image for hand landmarks
 results = hands.process(image_rgb)
 
-# Apply Canny edge detection
+# Function to apply skin mask and then use CannyEdge detection
 def canny_edge_detection(img, blur_ksize=5, threshold1=50, threshold2=290):
     hsvim = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     lower = np.array([0, 48, 80], dtype="uint8")
@@ -177,6 +178,99 @@ def find_perpendicular_intersection(cannyimg, image, mediapipe_pairs, lowest_poi
                 cv2.circle(image, found_intersection, 5, (0, 255, 0), -1)  # Green dot for extended intersection
                 print(f"Extended intersection with Canny edge for pair {pair}: {found_intersection}")
 
+# Func tim chieu rong moi ngon tay
+def find_perpendicular_cut_points(canny_img, result_img, point1, point2):
+    h, w = canny_img.shape  # Dimensions of the image
+
+    # Convert MediaPipe normalized landmarks to pixel coordinates
+    x1, y1 = int(point1.x * w), int(point1.y * h)
+    x2, y2 = int(point2.x * w), int(point2.y * h)
+
+    # Calculate slope (m) and y-intercept (c) for the line between the two points
+    if x2 != x1:
+        slope = (y2 - y1) / (x2 - x1)
+    else:
+        slope = None  # Vertical line
+
+    # Calculate the perpendicular slope
+    if slope is not None and slope != 0:
+        perp_slope = -1 / slope
+    elif slope is None:  # Vertical line case
+        perp_slope = 0  # Perpendicular to vertical is horizontal
+    else:
+        perp_slope = float('inf')  # Perpendicular to horizontal is vertical
+
+    # Extend the perpendicular line in two directions
+    def extend_line(x_start, y_start, slope, direction, max_length=1000):
+        x, y = x_start, y_start
+        while 0 <= x < w and 0 <= y < h:
+            if slope == float('inf'):  # Vertical line
+                y += direction
+            elif slope == 0:  # Horizontal line
+                x += direction
+            else:
+                x += direction
+                y = int(y_start + slope * (x - x_start))
+
+            if 0 <= x < w and 0 <= y < h and canny_img[y, x] != 0:
+                return (x, y)  # Return the first intersection point
+        return None
+
+    # Find the two intersection points
+    intersection_left = extend_line(x1, y1, perp_slope, direction=-1)  # Extend left
+    intersection_right = extend_line(x1, y1, perp_slope, direction=1)  # Extend right
+
+    # Draw the intersection points
+    if intersection_left:
+        cv2.circle(result_img, intersection_left, 5, (0, 255, 255), -1)  # Yellow circle
+        print(f"Left Intersection: {intersection_left}")
+    if intersection_right:
+        cv2.circle(result_img, intersection_right, 5, (255, 255, 0), -1)  # Cyan circle
+        print(f"Right Intersection: {intersection_right}")
+
+    return intersection_left, intersection_right
+
+def find_and_draw_point(canny_img, result_img, hand_landmarks, point_17_idx=17, point_0_idx=0):
+    """
+    Finds a point on the Canny edge line such that:
+    x < x of MediaPipe point 17 and y > y of MediaPipe point 0.
+    Draws the point on the result image.
+
+    :param canny_img: Grayscale Canny edge image.
+    :param result_img: Original image where the point will be drawn.
+    :param hand_landmarks: MediaPipe hand landmarks object.
+    :param point_17_idx: Index of MediaPipe point 17 (default 17).
+    :param point_0_idx: Index of MediaPipe point 0 (default 0).
+    """
+    h, w = canny_img.shape  # Dimensions of the Canny edge image
+
+    # Extract pixel coordinates for MediaPipe points 17 and 0
+    point_17 = hand_landmarks.landmark[point_17_idx]
+    point_0 = hand_landmarks.landmark[point_0_idx]
+
+    x_17, y_17 = int(point_17.x * w), int(point_17.y * h)
+    x_0, y_0 = int(point_0.x * w), int(point_0.y * h)
+
+    # Find a point on the Canny edge that satisfies the conditions
+    found_point = None
+    for y in range(h):  # Iterate over rows
+        for x in range(w):  # Iterate over columns
+            if canny_img[y, x] != 0:  # Check if the pixel is an edge
+                if x > x_17 and y > y_0:  # Check conditions
+                    found_point = (x, y)
+                    break
+        if found_point:
+            break
+
+    # Draw the found point on the result image
+    if found_point:
+        cv2.circle(result_img, found_point, 5, (0, 255, 255), -1)  # Yellow dot
+        print(f"Found point: {found_point}")
+    else:
+        print("No point found that satisfies the conditions.")
+
+    return found_point
+
 # Define the MediaPipe pairs
 mediapipe_pairs = [(5, 6), (9, 10), (13, 14), (17, 18), (2, 3)]
 
@@ -195,7 +289,8 @@ finger_lines = [
             (19, 20),  # Pinky finger
             (3,4),
         ]
-
+# Define the pairs for each finger
+finger_pairs = [(6, 5), (10, 9), (14, 13), (18, 17), (3, 2)]
 # Lists to store all intersection and lowest points
 intersection_points = []
 lowest_points = []
@@ -203,12 +298,21 @@ lowest_points = []
 # Process hands and all fingers
 if results.multi_hand_landmarks:
     for hand_landmarks in results.multi_hand_landmarks:
+        for pair in finger_pairs:
+            # Get landmarks for the current pair
+            point1 = hand_landmarks.landmark[pair[0]]
+            point2 = hand_landmarks.landmark[pair[1]]
+
+            # Find the intersection points for the current pair
+            intersections = find_perpendicular_cut_points(canny_img, result_img, point1, point2)
+            print(f"Intersections for pair {pair}: {intersections}") 
+
         # Draw the hand landmarks on the image
         mp_drawing.draw_landmarks(
             result_img, hand_landmarks, mp_hands.HAND_CONNECTIONS,
             mp_drawing_styles.get_default_hand_landmarks_style(),
             mp_drawing_styles.get_default_hand_connections_style()
-        )
+        ) 
 
     # Process each set of points for cropping
     for i, points in enumerate(points_to_crop):
@@ -256,9 +360,14 @@ if results.multi_hand_landmarks:
             # Append the intersection point to the list
             intersection_points.append(intersection)
 
-    
+    found_point = find_and_draw_point(canny_img, result_img, hand_landmarks)
+ 
 # Show results
 cv2.imshow("Hand Landmarks", result_img)
 cv2.imshow("Canny Edges", canny_img)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
+
+# Calculate the real-world distances between points
+
+# Length 1: 

@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row align-items-center">
+    <div class="col-md-6">
+        <h1 class="mb-4">Welcome to the Hand Measurement System</h1>
+        <p>
+            This application uses state-of-the-art computer vision techniques to provide accurate hand measurements. 
+            Whether you need it for research, design, or engineering, our system ensures precision and usability.
+        </p>
+        <p>Start by downloading the CAD file and the calibration pattern, then follow the steps below to measure your hand.</p>
+        <div>
+            <a href="{{ url_for('static', filename='files/hand_template.cad') }}" download class="btn btn-primary me-2">Download CAD File</a>
+            <a href="{{ url_for('static', filename='chess.png') }}" download class="btn btn-secondary">Download Chessboard</a>
+        </div>
+    </div>
+    <div class="col-md-6 text-center">
+        <img src="{{ url_for('static', filename='chess.png') }}" alt="Calibration Chessboard" class="img-fluid rounded shadow">
+    </div>
+</div>
+
+<hr class="my-5">
+
+<h2>How It Works</h2>
+<ol class="list-group list-group-numbered">
+    <li class="list-group-item">
+        <strong>Step 0:</strong> Download the CAD file and print it using a 3D printer.
+    </li>
+    <li class="list-group-item">
+        <strong>Step 1:</strong> Print the calibration chessboard on A4 paper.
+    </li>
+    <li class="list-group-item">
+        <strong>Step 2:</strong> Take 10 photos of the chessboard from different angles and upload them for calibration.
+    </li>
+    <li class="list-group-item">
+        <strong>Step 3:</strong> Upload images of your hand for measurement.
+    </li>
+    <li class="list-group-item">
+        <strong>Step 4:</strong> View detailed measurements on the Library page.
+    </li>
+</ol>
+
+<div class="alert alert-info mt-4">
+    <strong>Tip:</strong> For the best results, use a well-lit area and ensure the images are clear and focused.
+</div>
+{% endblock %}
